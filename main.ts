@@ -1,16 +1,18 @@
 import { Application, Router } from 'https://deno.land/x/oak@v12.6.1/mod.ts'
 //import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 //import data from "./data.json" assert { type: "json" };
+import type { DenoRestaurantDTO } from './types/denoRestaurant.dto'
 import type { RestaurantDTO } from './types/restaurant.dto'
 import type { Restaurant } from './types/restaurant'
+import { nanoid } from "https://deno.land/x/nanoid/async.ts"
 import Slack from 'npm:@slack/web-api'
 
 const kv = await Deno.openKv()
 const slack = new Slack.WebClient(Deno.env.get('SLACK_TOKEN'))
 
-const restaurantList = async (): RestaurantDTO[] => {
+const restaurantList = async (): Restaurant[] => {
   const pool: Restaurant[] = []
-  for await (const restaurant: RestaurantDTO of kv.list({ prefix: ['restaurant'] })) {
+  for await (const restaurant: DenoRestaurantDTO of kv.list({ prefix: ['restaurant'] })) {
     pool.push(Object.assign({}, {id: restaurant.key }, restaurant.value))
   }
 
@@ -26,7 +28,15 @@ const formatRestaurant = (restaurant: Restaurant): string => {
   return `<https://www.google.com/maps/search/小巨蛋+${restaurant.mapKeyword} | ${restaurant.displayName}>`
 }
 
-const router = new Router();
+const createRestaurant = async (params: RestaurantDTO): Promise<void> => {
+  await kv.set(['restaurant', nanoid()], params)
+}
+
+const deleteRestaurant = async (key: string): Promise<void> => {
+  await kv.delete(['restaurant', key])
+}
+
+const router = new Router()
 router
   .post('/api/v1/random_restaurants', async (ctx) => {
     const restaurantName = formatRestaurant(await randomRestaurant())
