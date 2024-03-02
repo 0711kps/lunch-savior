@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "checktype": "deno check main.ts --unstable-sloppy-imports"
+  }
+}
