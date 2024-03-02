@@ -1,23 +1,24 @@
 import { Application, Router } from 'https://deno.land/x/oak@v12.6.1/mod.ts'
-import type { DenoRestaurantDTO } from './types/denoRestaurant.dto'
+// import type { DenoRestaurantDTO } from './types/denoRestaurant.dto'
 import type { RestaurantDTO } from './types/restaurant.dto'
 import type { Restaurant } from './types/restaurant'
 import { nanoid } from "https://deno.land/x/nanoid/async.ts"
-import Slack from 'npm:@slack/web-api'
+import { WebClient as SlackClient } from 'npm:@slack/web-api'
+import type { ModalView, PlainTextOption } from 'npm:@slack/types'
 
 const kv = await Deno.openKv()
-const slack = new Slack.WebClient(Deno.env.get('SLACK_TOKEN'))
+const slack = new SlackClient(Deno.env.get('SLACK_TOKEN'))
 
-const restaurantList = async (): Restaurant[] => {
+const restaurantList = async (): Promise<Restaurant[]> => {
   const pool: Restaurant[] = []
-  for await (const restaurant: DenoRestaurantDTO of kv.list({ prefix: ['restaurant'] })) {
-    pool.push(Object.assign({}, {id: restaurant.key[1] }, restaurant.value))
+  for await (const restaurant of kv.list({ prefix: ['restaurant'] })) {
+    pool.push(Object.assign({}, {id: restaurant.key[1] }, restaurant.value) as Restaurant)
   }
 
   return pool
 }
 
-const randomRestaurant = async (): Restaurant => {
+const randomRestaurant = async (): Promise<Restaurant> => {
   const pool = await restaurantList()
   return pool[Math.floor(Math.random() * pool.length)]
 }
@@ -27,7 +28,7 @@ const formatRestaurant = (restaurant: Restaurant): string => {
 }
 
 const createRestaurant = async (params: RestaurantDTO): Promise<void> => {
-  await kv.set(['restaurant', await nanoid()], params)
+  await kv.set(['restaurant', await nanoid(5)], params)
 }
 
 const deleteRestaurants = async (keys: string[]): Promise<void> => {
@@ -35,64 +36,64 @@ const deleteRestaurants = async (keys: string[]): Promise<void> => {
 }
 
 const openModal = async ({ action_id, trigger_id}: { action_id: string, trigger_id: string}) => {
-  let view
+  let view: ModalView = {
+    type: 'modal',
+    title: {
+      type: 'plain_text',
+      text: ''
+    },
+    submit: {
+      type: 'plain_text',
+      text: ''
+    },
+    close: {
+		  type: "plain_text",
+		  text: "取消"
+	  },
+    blocks: []
+  }
   switch(action_id) {
     case 'addRestaurantModal':
-      view = {
-	      "type": "modal",
-	      "title": {
-		      "type": "plain_text",
-		      "text": "新增餐廳"
-	      },
-        "callback_id": "createRestaurant",
-	      "submit": {
-		      "type": "plain_text",
-		      "text": "增加"
-	      },
-	      "close": {
-		      "type": "plain_text",
-		      "text": "取消"
-	      },
-	      "blocks": [
-		      {
-			      "type": "input",
-            "block_id": "displayNameField",
-			      "element": {
-				      "type": "plain_text_input",
-              "action_id": "input",
-              "placeholder": {
-                "type": "plain_text",
-                "text": "餐廳名稱"
-              }
-			      },
-			      "label": {
-				      "type": "plain_text",
-				      "text": "餐廳名稱"
-			      }
-		      },
-		      {
-			      "type": "input",
-            "optional": true,
-            "block_id": "mapKeywordField",
-			      "element": {
-				      "type": "plain_text_input",
-              "action_id": "input",
-              "placeholder": {
-					      "type": "plain_text",
-					      "text": "空白將使用餐廳名稱"
-				      }
-			      },
-			      "label": {
-				      "type": "plain_text",
-				      "text": "關鍵字",
-				      "emoji": true
-			      }
-		      }
-	      ]
-      }
+      view.title.text = '新增餐廳'
+      view.callback_id = 'createRestaurant'
+      view.submit!.text = '增加'
+      view.blocks.push({
+        type: 'input',
+        block_id: 'displayNameField',
+			  element: {
+				  "type": 'plain_text_input',
+          action_id: 'input',
+          placeholder: {
+            type: 'plain_text',
+            text: '餐廳名稱'
+          }
+			  },
+			  label: {
+				  type: 'plain_text',
+				  text: '餐廳名稱'
+			  }
+      })
+      view.blocks.push({
+        type: 'input',
+        optional: true,
+        block_id: 'mapKeywordField',
+			  element: {
+				  type: 'plain_text_input',
+          action_id: 'input',
+          placeholder: {
+					  type: 'plain_text',
+					  text: '空白將使用餐廳名稱'
+				  }
+			  },
+			  label: {
+				  type: 'plain_text',
+				  text: '關鍵字',
+				  emoji: true
+			  }
+      })
       break
     case 'deleteRestaurantModal':
-      const restaurantOptions = (await restaurantList()).map(restaurant => {
+      const restaurantOptions: PlainTextOption[] = (await restaurantList()).map(restaurant => {
         return {
 					"text": {
 						"type": "plain_text",
@@ -102,43 +103,31 @@ const openModal = async ({ action_id, trigger_id}: { action_id: string, trigger_
 					"value": restaurant.id.toString()
 				}
       })
-      view = {
-	      "type": "modal",
-	      "title": {
-		      "type": "plain_text",
-		      "text": "刪除餐廳"
-	      },
-        "callback_id": "deleteRestaurant",
-	      "submit": {
-		      "type": "plain_text",
-		      "text": "刪除"
-	      },
-	      "close": {
-		      "type": "plain_text",
-		      "text": "取消"
-	      },
-	      "blocks": [
-		      {
-			      "type": "input",
-            "block_id": "deleteRestaurant",
-			      "element": {
-				      "type": "multi_static_select",
-				      "placeholder": {
-					      "type": "plain_text",
-					      "text": "要刪除的餐廳",
-					      "emoji": true
-				      },
-				      "options": restaurantOptions,
-				      "action_id": "targets"
-			      },
-			      "label": {
-				      "type": "plain_text",
-				      "text": "選擇餐廳"
-			      }
-		      }
-	      ]
-      }
+      view.title.text = '刪除餐廳'
+      view.callback_id = 'deleteRestaurant'
+      view.submit!.text = '刪除'
+      view.blocks.push({
+			  type: 'input',
+        block_id: 'restaurantMenu',
+			  element: {
+				  type: 'multi_static_select',
+				  placeholder: {
+					  type: 'plain_text',
+					  text: '要刪除的餐廳',
+					  emoji: true
+				  },
+				  options: restaurantOptions,
+				  action_id: 'targets'
+			  },
+			  label: {
+				  type: 'plain_text',
+				  text: '選擇餐廳',
+          emoji: true
+			  }
+		  })
       break
+    default:
+      return
   }
 
   await slack.views.open({
@@ -147,11 +136,11 @@ const openModal = async ({ action_id, trigger_id}: { action_id: string, trigger_
   })
 }
 
-const submitView = async (callbackId, stateValues) => {
+const submitView = async (callbackId: string, stateValues: Record<string, any>) => {
   switch(callbackId) {
     case 'deleteRestaurant':
-      const targets = stateValues.deleteRestaurant.targets.selected_options
-      const restaurantKeys = targets.map(option => option.value)
+      const targets = stateValues.restaurantMenu.targets.selected_options
+      const restaurantKeys = targets.map((option: Record<string, any>) => option.value)
       await deleteRestaurants(restaurantKeys)
       break
     case 'createRestaurant':
@@ -168,33 +157,33 @@ router
     const restaurantName = formatRestaurant(await randomRestaurant())
     const blocks = [
       {
-        type: "section",
+        type: 'section',
         text: {
-          type: "mrkdwn",
+          type: 'mrkdwn',
           text: `*${restaurantName}*`
         }
       },
       {
-        type: "divider"
+        type: 'divider'
       },
       {
-        type: "actions",
+        type: 'actions',
         elements: [
           {
-            type: "button",
+            type: 'button',
             text: {
-              type: "plain_text",
-              text: "增加餐廳"
+              type: 'plain_text',
+              text: '增加餐廳'
             },
             action_id: 'addRestaurantModal'
           },
           {
-            type: "button",
+            type: 'button',
             text: {
-              type: "plain_text",
-              text: "刪除餐廳"
+              type: 'plain_text',
+              text: '刪除餐廳'
             },
-            action_id: "deleteRestaurantModal"
+            action_id: 'deleteRestaurantModal'
           } 
        ]
       }
