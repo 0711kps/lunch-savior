@@ -19,9 +19,17 @@ const restaurantList = async (): Promise<Restaurant[]> => {
   return pool
 }
 
+const prevSuggestionIds: string[] = []
+
 const randomRestaurant = async (): Promise<Restaurant> => {
   const pool = await restaurantList()
-  return pool[Math.floor(Math.random() * pool.length)]
+  const historyMaxSize = pool.length > 5 ? Math.ceil(pool.length * 0.4) : 1
+  if (prevSuggestionIds.length >= historyMaxSize) prevSuggestionIds.slice(prevSuggestionIds.length - historyMaxSizee)
+
+  const filteredPool = pool.filter(restaurant => !prevSuggestionIds.includes(restaurant.id))
+  const suggestion = filteredPool[Math.floor(Math.random() * filteredPool.length)]
+  prevSuggestionIds.push(suggestion.id)
+  return suggestion
 }
 
 const formatRestaurant = (restaurant: Restaurant): string => {
