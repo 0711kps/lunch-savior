@@ -1,7 +1,7 @@
 import { modalBase } from './modalBase.ts'
 
 const addRestaurantModal = () => {
-  const view = Object.assign({}, modalBase)
+  const view = JSON.parse(JSON.stringify(modalBase))
 
   view.title.text = '新增餐廳'
   view.callback_id = 'createRestaurant'
